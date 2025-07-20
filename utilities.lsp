@@ -9,7 +9,8 @@
 
 (defun partials-to-events (partials average &optional (power 1) (vel-range '(0 1)))
   (let ((min-amp (third (caar partials)))
-	(max-amp (third (caar partials))))
+	(max-amp (third (caar partials)))
+	(events '()))
     (flet ((scale-velocity (val)
 	     (max (expt (rescale val min-amp max-amp 0 1) power) (float 1/127))))
       (format t "~&Processing Partial Data...")
@@ -17,41 +18,41 @@
       ;; Calculates mean values of pitch and velocity for each event.
       (if average
 	  (progn
-	    ;; Get min and max Amplitude
 	    (loop for partial in partials
-		  for avg-amp = (sublists-index-avg partial 2)
-		  minimize avg-amp into min
-		  maximize avg-amp into max
-		  finally (setf min-amp min max-amp max))
-	
-	    (loop for partial in partials
+		  for avg = (get-average-freq-amp partial)
 		  ;; Midi Number
-		  for avg-freq = (sublists-index-avg partial 1)
+		  for avg-freq = (first avg)
 		  for note = (frequency-to-midi avg-freq)
-		  for vel = (scale-velocity (sublists-index-avg partial 2))
+		  for vel = (second avg)
 		  for start = (caar partial)
 		  for dur = (- (caar (last partial)) start)
-		  when (<= (first vel-range) vel (second vel-range))
-		    collect (list note dur start vel)))
+		  do (when (< vel min-amp) (setf min-amp vel))
+		     (when (> vel max-amp) (setf max-amp vel))
+		     (push (list note dur start vel) events))
+	    ;; scale velocities
+	    (loop for (note dur start vel) in events
+		  for new-vel = (scale-velocity vel)
+		  when (<= (first vel-range) new-vel (second vel-range))
+		    collect (list note dur start new-vel)))
 	  ;; when we want all segments of the parials, not just their average:
 	  (progn
-	    (let ((events '()))
-	      ;; convert time-points to events
-	      (loop for partial in partials 
-		    do (loop for (point1 point2) on partial while point2
-			     for start = (first point1)
-			     for dur = (- (first point2) start)
-			     for note = (frequency-to-midi (/ (+ (second point1) (second point2)) 2))
-			     for amp = (/ (+ (third point1) (third point2)) 2)
-			     do (when (< amp min-amp) (setf min-amp amp))
-				(when (> amp max-amp) (setf max-amp amp))
-				(push (list note dur start amp) events)))
-	      ;; TODO would be nice to string together events with same note and amp that touch,
-	      ;; but for now that's somethings FL Studio can do...
-	      (loop for (note dur start vel) in events
-		    for new-vel = (scale-velocity vel)
-		    when (<= (first vel-range) new-vel (second vel-range))
-		      collect (list note dur start new-vel))))))))
+	    ;; convert time-points to events
+	    (loop for partial in partials 
+		  do (loop for (point1 point2) on partial while point2
+			   for start = (first point1)
+			   for dur = (- (first point2) start)
+			   for note = (frequency-to-midi (/ (+ (second point1) (second point2)) 2))
+			   for vel = (/ (+ (third point1) (third point2)) 2)
+			   do (when (< vel min-amp) (setf min-amp vel))
+			      (when (> vel max-amp) (setf max-amp vel))
+			      (push (list note dur start vel) events)))
+	    ;; scale velocities
+	    ;; TODO would be nice to string together events with same note and amp that touch,
+	    ;; but for now that's somethings FL Studio can do...
+	    (loop for (note dur start vel) in events
+		  for new-vel = (scale-velocity vel)
+		  when (<= (first vel-range) new-vel (second vel-range))
+		    collect (list note dur start new-vel)))))))
 
 ;; ** from the Python Mido Library
 
@@ -109,6 +110,15 @@
       (incf sum (nth index item)))
     (/ sum (length ls))))
 
+(defun get-average-freq-amp (partial)
+  "Returns the average frequency and amplitude of a partial (list of sublists,
+   where the second and third elements are the frequency and amplitude)."
+  (loop for (a b c) in partial
+	sum b into freq
+	sum c into amp
+	finally
+	   (return (list (/ freq (length partial))
+			 (/ amp (length partial))))))
 
 ;; ** copied from Michael Edwards' Slippery Chicken:
 

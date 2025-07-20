@@ -26,7 +26,7 @@
 (spear-to-midi
  "/C/.../Desktop/vr_rechts.txt"
  "/E/midi/vr_rechts.mid"
- 0.5
+ 0.25
  '(0.0  0.8))
 |#
 (defun spear-to-midi (input-file
