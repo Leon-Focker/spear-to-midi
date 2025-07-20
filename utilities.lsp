@@ -28,12 +28,12 @@
 		  for dur = (- (caar (last partial)) start)
 		  do (when (< vel min-amp) (setf min-amp vel))
 		     (when (> vel max-amp) (setf max-amp vel))
-		     (push (list note dur start vel) events))
+		     (push (list note start vel dur) events))
 	    ;; scale velocities
-	    (loop for (note dur start vel) in events
+	    (loop for (note start vel dur) in events
 		  for new-vel = (scale-velocity vel)
 		  when (<= (first vel-range) new-vel (second vel-range))
-		    collect (list note dur start new-vel)))
+		    collect (list note start new-vel dur)))
 	  ;; when we want all segments of the parials, not just their average:
 	  (progn
 	    ;; convert time-points to events
@@ -45,14 +45,14 @@
 			   for vel = (/ (+ (third point1) (third point2)) 2)
 			   do (when (< vel min-amp) (setf min-amp vel))
 			      (when (> vel max-amp) (setf max-amp vel))
-			      (push (list note dur start vel) events)))
+			      (push (list note start vel dur) events)))
 	    ;; scale velocities
 	    ;; TODO would be nice to string together events with same note and amp that touch,
 	    ;; but for now that's somethings FL Studio can do...
-	    (loop for (note dur start vel) in events
+	    (loop for (note start vel dur) in events
 		  for new-vel = (scale-velocity vel)
 		  when (<= (first vel-range) new-vel (second vel-range))
-		    collect (list note dur start new-vel)))))))
+		    collect (list note start vel dur)))))))
 
 ;; ** from the Python Mido Library
 
@@ -223,70 +223,27 @@
         (t (append (almost-flatten (first nested-list))
                    (almost-flatten (rest nested-list))))))
 
-;; ** from my :layers Library
+;; ** midi
 
-;; *** get-start-times
-(defun get-start-times (list-of-durations)
-  (loop for i in list-of-durations
-     and sum = 0 then (+ sum i)
-     collect sum))
-
-;; *** lists-to-midi
-;;; generate a midi file from lists of starting points, length, pitch...
-;;; if one list is shorter than others it will be wrapped (mod).
-;;; Has a lot less features than slippery chickens event-list-to-midi-file, but
-;;; in return it's a lot easier and skipps the generation of an event, which
-;;; might be favorable in some cases.
-;;; pitch-list - A list of either sc-pitches or midi-key-numbers. Can also be a
-;;;  list of chords, ie. lists of pitches.
-
-(defmacro lists-to-midi-aux (note)
-  ``(,(if (numberp ,note) ,note (error "lists-to-midi: Not a midi note: ~a" ,note))
-     ,(nth (mod i start-len) start-time-list)
-     ,(nth (mod i velo-len) velo)
-     ,(nth (mod i duration-len) duration-list)
-     ,(nth (mod i chan-len) channel)))
-
-(defun lists-to-midi (note-list duration-list start-time-list
-		      &key
-			velocity-list
-			(tempo 60)
-			(channel '(0))
-			(file (spear-to-midi-path "midi-output.mid")))
-  (when (or (null note-list) (null duration-list))
-    (error "please provide at least one value in the note and the duration ~
-            lists in lists-to-midi"))
-  (unless start-time-list (setf start-time-list
-				(get-start-times duration-list)))
-  (setf channel (force-list channel))
-  (let* ((note-len (length note-list))
-	 (duration-len (length duration-list))
-	 (start-len (length start-time-list))
-	 (velo (or velocity-list '(0.7)))
-	 (velo-len (length velo))
-	 (chan-len (length channel))
-	 (total (apply #'max `(,note-len ,duration-len ,start-len ,velo-len)))
-	 (events '()))
-    (setf events
-	  (sort (loop for i below total
-		      for note = (nth (mod i note-len) note-list)
-		      collect (lists-to-midi-aux
-			       (if (listp note) (car note) note))
-		      when (listp note)
-			append (loop for p in (cdr note)
-				     collect (lists-to-midi-aux p)))
-		#'(lambda (x y) (< (second x) (second y))))
-	  events (loop for event in events
-		       appending
-		       (cm::output-midi-note
-			(pop event)
-			0
-			(pop event)
-			(pop event)
-			(pop event)
-			(pop event))))
+;;; events being a list of lists with 4 values: (note start dur velocity)
+(defun events-to-midi (events
+		       &key
+			 (tempo 60)
+			 (channel 0)
+			 (file (spear-to-midi-path "midi-output.mid")))
+  (let ((midi-events '()))
+    (setf midi-events
+	  (loop for event in events
+		appending
+		(cm::output-midi-note
+		 (pop event)		; note
+		 0
+		 (pop event)		; start
+		 (pop event)		; velo
+		 (pop event)		; duration
+		 channel)))		; channel
     (cm::events
-     (cm::new cm::seq :name (gensym) :time 0.0 :subobjects events)
+     (cm::new cm::seq :name (gensym) :time 0.0 :subobjects midi-events)
      file
      :tempo tempo)))
 

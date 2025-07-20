@@ -59,19 +59,7 @@
 	(setf events (partials-to-events partials average-partials velocity-skew vel-range)))
     ;; Call to lists-to-midi
     (format t "~&Generating Midi File...")
-    (let ((notes '())
-	  (durs '())
-	  (starts '())
-	  (vels '()))
-      (loop for (note dur start vel) in events
-	    do (push note notes)
-	       (push dur durs)
-	       (push start starts)
-	       (push vel vels))
-      (lists-to-midi notes durs starts
-		     :velocity-list vels
-		     :tempo bpm
-		     :file file))
+    (events-to-midi events :tempo bpm :file file)
     (format t "~&Done")
     file))
 
