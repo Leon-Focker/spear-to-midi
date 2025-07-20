@@ -52,7 +52,7 @@
 	    (loop for (note start vel dur) in events
 		  for new-vel = (scale-velocity vel)
 		  when (<= (first vel-range) new-vel (second vel-range))
-		    collect (list note start vel dur)))))))
+		    collect (list note start new-vel dur)))))))
 
 ;; ** from the Python Mido Library
 
@@ -233,7 +233,8 @@
 			 (file (spear-to-midi-path "midi-output.mid")))
   (let ((midi-events '()))
     (setf midi-events
-	  (loop for event in events
+	  ;; this sort is important
+	  (loop for event in (sort events #'(lambda (x y) (< (second x) (second y))))
 		appending
 		(cm::output-midi-note
 		 (pop event)		; note
@@ -241,7 +242,7 @@
 		 (pop event)		; start
 		 (pop event)		; velo
 		 (pop event)		; duration
-		 channel)))		; channel
+		 channel)))             ; channel
     (cm::events
      (cm::new cm::seq :name (gensym) :time 0.0 :subobjects midi-events)
      file
